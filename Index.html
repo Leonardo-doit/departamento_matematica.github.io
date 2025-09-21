@@ -1,0 +1,513 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="utf-8" />
+  <title>MathMentor — SIMCE Chat</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <style>
+    :root{
+      --bg:#ededed;
+      --bot:#ffffff;
+      --user:#dcf8c6;
+      --accent:#25d366;
+      --header:#075e54;
+      --text:#222;
+      --muted:#6b7280;
+      --danger:#ef4444;
+      --info:#0ea5e9;
+    }
+    *{box-sizing:border-box}
+    body{
+      margin:0;
+      font-family: system-ui,-apple-system,Segoe UI,Roboto,Ubuntu,Cantarell,"Helvetica Neue",Arial;
+      background: #111;
+      color: var(--text);
+      display:flex;
+      align-items:center;
+      justify-content:center;
+      min-height:100vh;
+    }
+    .phone{
+      width: 420px;
+      max-width: 100%;
+      height: 720px;
+      max-height: 96vh;
+      border-radius: 24px;
+      overflow: hidden;
+      background: var(--bg);
+      box-shadow: 0 10px 30px rgba(0,0,0,.35), 0 2px 6px rgba(0,0,0,.2);
+      display:flex;
+      flex-direction:column;
+    }
+    .header{
+      background: var(--header);
+      color: #fff;
+      padding: 12px 14px;
+      display:flex;
+      align-items:center;
+      gap:10px;
+    }
+    .avatar{
+      width:34px;height:34px;border-radius:50%;
+      background:#fff3;border:1px solid #fff6;
+      display:flex;align-items:center;justify-content:center;
+      font-weight:700;color:#fff;
+    }
+    .title{
+      display:flex;flex-direction:column;line-height:1.1;
+    }
+    .title .name{font-weight:700}
+    .title .sub{font-size:12px;opacity:.9}
+    .timer{
+      margin-left:auto;
+      background:#ffffff22;
+      padding:4px 8px;border-radius:999px;
+      font-variant-numeric: tabular-nums;
+      font-weight:700;
+    }
+    .chat{
+      flex:1;
+      background: #e5ddd5;
+      background-image:
+        radial-gradient(#00000006 1px, transparent 1px),
+        radial-gradient(#00000006 1px, transparent 1px);
+      background-position: 0 0, 10px 10px;
+      background-size: 20px 20px;
+      padding: 12px;
+      overflow:auto;
+      scroll-behavior:smooth;
+    }
+    .bubble{
+      max-width: 80%;
+      padding: 10px 12px;
+      border-radius: 16px;
+      margin: 6px 0;
+      position:relative;
+      word-wrap: break-word;
+      white-space: pre-wrap;
+      font-size: 15px;
+    }
+    .bot{ background: var(--bot); margin-right:auto; }
+    .user{ background: var(--user); margin-left:auto; }
+    .meta{ font-size:11px; color: var(--muted); margin-top:4px }
+    .options{
+      display:flex; flex-wrap:wrap; gap:8px; margin-top:8px;
+    }
+    .chip{
+      border:none;
+      padding:8px 12px;
+      border-radius:999px;
+      background:#fff;
+      cursor:pointer;
+      box-shadow:0 1px 2px rgba(0,0,0,.15);
+    }
+    .chip.primary{ background: var(--accent); color:#fff }
+    .chip.warn{ background: #f59e0b; color:#111 }
+    .chip.info{ background: #e0f2fe; color:#0369a1 }
+    .chip.ghost{ background: #f3f4f6; color:#111 }
+    .inputbar{
+      display:flex; align-items:center; gap:8px;
+      padding: 10px; background:#f7f7f7; border-top:1px solid #e5e7eb;
+    }
+    .inputbar input{
+      flex:1; padding:12px; border-radius:999px; border:1px solid #e5e7eb;
+      outline:none; font-size:15px; background:#fff;
+    }
+    .inputbar button{
+      border:none; background: var(--accent); color:#fff;
+      padding:10px 14px; border-radius:999px; cursor:pointer; font-weight:700;
+    }
+    .tag{
+      display:inline-block; padding:2px 8px; border-radius:999px;
+      background:#eef2ff; color:#3730a3; font-size:12px; margin-left:6px;
+    }
+    .score{
+      font-size:13px; color:#065f46; background:#ecfdf5; border:1px solid #10b98155;
+      padding:6px 8px; border-radius:8px; display:inline-block; margin-top:6px;
+    }
+    .sep{
+      text-align:center; color:#6b7280; font-size:12px; margin:10px 0;
+    }
+    .hidden{ display:none !important }
+  </style>
+</head>
+<body>
+  <div class="phone" role="application" aria-label="Chat SIMCE MathMentor">
+    <div class="header">
+      <div class="avatar" aria-hidden="true">M</div>
+      <div class="title">
+        <div class="name">MathMentor</div>
+        <div class="sub">Profesor guía SIMCE</div>
+      </div>
+      <div id="timer" class="timer">00:20:00</div>
+    </div>
+
+    <div id="chat" class="chat" aria-live="polite"></div>
+
+    <div class="inputbar">
+      <input id="textInput" type="text" placeholder="Escribe aquí..." autocomplete="off" />
+      <button id="sendBtn" type="button">Enviar</button>
+    </div>
+  </div>
+
+  <script>
+    // Estado principal
+    const state = {
+      nombre: null,
+      nivel: null,
+      eje: null,
+      started: false,
+      remaining: 20 * 60, // 20 minutos en segundos (formato 00:20:00)
+      intervalId: null,
+      currentQuestion: null,
+      attempt: 0,
+      asked: 0,
+      correct: 0,
+      incorrect: 0,
+      points: 0,
+      usedIds: new Set(),
+      habilidadesCount: {}
+    };
+
+    // Utilidades UI
+    const chat = document.getElementById('chat');
+    const input = document.getElementById('textInput');
+    const sendBtn = document.getElementById('sendBtn');
+    const timerEl = document.getElementById('timer');
+
+    function scrollBottom(){ chat.scrollTop = chat.scrollHeight; }
+
+    function fmtTime(total){
+      const h = Math.floor(total / 3600);
+      const m = Math.floor((total % 3600) / 60);
+      const s = total % 60;
+      const hh = String(h).padStart(2,'0');
+      const mm = String(m).padStart(2,'0');
+      const ss = String(s).padStart(2,'0');
+      return `${hh}:${mm}:${ss}`;
+    }
+
+    function addBubble(text, who='bot', options=[]){
+      const wrap = document.createElement('div');
+      const b = document.createElement('div');
+      b.className = `bubble ${who}`;
+      b.textContent = text;
+      wrap.appendChild(b);
+      if(options.length){
+        const optWrap = document.createElement('div');
+        optWrap.className = 'options';
+        options.forEach(opt=>{
+          const btn = document.createElement('button');
+          btn.className = `chip ${opt.variant||'ghost'}`;
+          btn.textContent = opt.label;
+          btn.onclick = opt.onClick;
+          optWrap.appendChild(btn);
+        });
+        wrap.appendChild(optWrap);
+      }
+      chat.appendChild(wrap);
+      scrollBottom();
+      return b;
+    }
+
+    function addMeta(toBubble, metaText){
+      const m = document.createElement('div');
+      m.className = 'meta';
+      m.textContent = metaText;
+      toBubble.appendChild(m);
+    }
+
+    function addScore(text){
+      const s = document.createElement('div');
+      s.className = 'score';
+      s.textContent = text;
+      chat.appendChild(s);
+      scrollBottom();
+    }
+
+    // Persistencia por sesión
+    function saveSession(){
+      sessionStorage.setItem('mathmentor_stats', JSON.stringify({
+        nombre: state.nombre,
+        nivel: state.nivel,
+        eje: state.eje,
+        asked: state.asked,
+        correct: state.correct,
+        incorrect: state.incorrect,
+        points: state.points,
+        habilidades: state.habilidadesCount,
+        finishedAt: new Date().toISOString()
+      }));
+    }
+
+    // Banco de preguntas
+    // Cada pregunta: id, nivel, eje, habilidad, enunciado, alternativas [4], correcta (texto exacto)
+    const preguntas = [
+      // NÚMEROS
+      {id:'N1', nivel:'6° Básico', eje:'Números', habilidad:'Resolver problemas',
+       enunciado:'¿Cuál es el valor de 3/4 + 1/2?',
+       alternativas:['5/4','3/8','1/4','7/8'], correcta:'5/4'},
+      {id:'N2', nivel:'7° Básico', eje:'Números', habilidad:'Comunicar',
+       enunciado:'Ordena de menor a mayor: 0,75 ; 0,7 ; 0,705',
+       alternativas:['0,7 < 0,705 < 0,75','0,705 < 0,7 < 0,75','0,75 < 0,705 < 0,7','0,705 < 0,75 < 0,7'],
+       correcta:'0,7 < 0,705 < 0,75'},
+      {id:'N3', nivel:'5° Básico', eje:'Números', habilidad:'Modelar',
+       enunciado:'¿Cuál es el 25% de 200?',
+       alternativas:['50','25','100','75'], correcta:'50'},
+      {id:'N4', nivel:'1° Medio', eje:'Números', habilidad:'Representar',
+       enunciado:'¿Cuál es el valor absoluto de -12?',
+       alternativas:['12','-12','0','-1'], correcta:'12'},
+
+      // ÁLGEBRA
+      {id:'A1', nivel:'7° Básico', eje:'Álgebra', habilidad:'Resolver problemas',
+       enunciado:'Si x + 5 = 12, ¿cuál es el valor de x?',
+       alternativas:['7','12','17','-7'], correcta:'7'},
+      {id:'A2', nivel:'1° Medio', eje:'Álgebra', habilidad:'Representar',
+       enunciado:'Resuelve: 3x + 2 = 14',
+       alternativas:['x = 4','x = 2','x = -4','x = 6'], correcta:'x = 4'},
+      {id:'A3', nivel:'8° Básico', eje:'Álgebra', habilidad:'Modelar',
+       enunciado:'¿Cuál es una forma equivalente de 2(x + 3)?',
+       alternativas:['2x + 6','2x + 3','x + 5','2x + 9'], correcta:'2x + 6'},
+      {id:'A4', nivel:'1° Medio', eje:'Álgebra', habilidad:'Resolver problemas',
+       enunciado:'Secuencia: 2, 5, 8, 11, ... ¿Cuál es el 10° término?',
+       alternativas:['29','30','28','26'], correcta:'29'},
+
+      // GEOMETRÍA
+      {id:'G1', nivel:'6° Básico', eje:'Geometría', habilidad:'Resolver problemas',
+       enunciado:'Perímetro de un rectángulo de 5 cm por 3 cm.',
+       alternativas:['16 cm','8 cm','15 cm','30 cm'], correcta:'16 cm'},
+      {id:'G2', nivel:'7° Básico', eje:'Geometría', habilidad:'Modelar',
+       enunciado:'Área de un triángulo de base 10 cm y altura 6 cm.',
+       alternativas:['30 cm²','60 cm²','16 cm²','26 cm²'], correcta:'30 cm²'},
+      {id:'G3', nivel:'1° Medio', eje:'Geometría', habilidad:'Argumentar',
+       enunciado:'La suma de los ángulos interiores de un triángulo es:',
+       alternativas:['180°','90°','270°','360°'], correcta:'180°'},
+      {id:'G4', nivel:'8° Básico', eje:'Geometría', habilidad:'Argumentar',
+       enunciado:'Un triángulo con lados 5, 5 y 8 es:',
+       alternativas:['Isósceles','Escaleno','Equilátero','Rectángulo'], correcta:'Isósceles'},
+
+      // DATOS Y AZAR
+      {id:'D1', nivel:'8° Básico', eje:'Datos y azar', habilidad:'Representar',
+       enunciado:'La mediana de 2, 4, 4, 5, 5, 5, 7 es:',
+       alternativas:['5','4','7','6'], correcta:'5'},
+      {id:'D2', nivel:'7° Básico', eje:'Datos y azar', habilidad:'Modelar',
+       enunciado:'Al lanzar un dado justo, la probabilidad de obtener un número par es:',
+       alternativas:['1/2','1/3','2/3','1/6'], correcta:'1/2'},
+      {id:'D3', nivel:'1° Medio', eje:'Datos y azar', habilidad:'Resolver problemas',
+       enunciado:'En una encuesta, 30 de 50 prefieren A. El porcentaje es:',
+       alternativas:['60%','40%','30%','50%'], correcta:'60%'},
+      {id:'D4', nivel:'8° Básico', eje:'Datos y azar', habilidad:'Representar',
+       enunciado:'El rango de 2, 5, 9, 9, 15 es:',
+       alternativas:['13','7','17','9'], correcta:'13'}
+    ];
+
+    // Flujo inicial
+    function greet(){
+      addBubble('¡Hola! Soy MathMentor, un profesor de matemáticas paciente y servicial listo para practicar habilidades tipo SIMCE contigo. 😊', 'bot');
+      setTimeout(()=> askName(), 400);
+    }
+
+    function askName(){
+      addBubble('¿Cuál es tu nombre?', 'bot');
+      input.placeholder = 'Escribe tu nombre y presiona Enviar';
+      input.focus();
+      sendBtn.onclick = () => {
+        const v = input.value.trim();
+        if(!v) return;
+        state.nombre = v;
+        addBubble(v, 'user');
+        input.value='';
+        askLevel();
+      };
+    }
+
+    const niveles = [
+      '1° Básico','2° Básico','3° Básico','4° Básico','5° Básico','6° Básico',
+      '7° Básico','8° Básico','1° Medio','2° Medio','3° Medio','4° Medio'
+    ];
+
+    function askLevel(){
+      const b = addBubble('Elige tu nivel educativo:', 'bot',
+        niveles.map(n => ({label:n, onClick: ()=> pickLevel(n)}))
+      );
+      addMeta(b, 'Toca una opción');
+    }
+
+    function pickLevel(n){
+      state.nivel = n;
+      addBubble(n, 'user');
+      askAxis();
+    }
+
+    const ejes = ['Números','Álgebra','Geometría','Datos y azar'];
+
+    function askAxis(){
+      const b = addBubble('¿Qué eje quieres practicar hoy?', 'bot',
+        ejes.map(e => ({label:e, onClick: ()=> pickAxis(e)}))
+      );
+      addMeta(b, 'Toca una opción');
+    }
+
+    function pickAxis(e){
+      state.eje = e;
+      addBubble(e, 'user');
+      // Guardar selección inicial
+      saveSession();
+      // Arrancar quiz
+      startQuiz();
+    }
+
+    // Temporizador
+    function startTimer(){
+      updateTimer();
+      state.intervalId = setInterval(()=>{
+        if(state.remaining>0){
+          state.remaining -= 1;
+          updateTimer();
+        } else {
+          clearInterval(state.intervalId);
+          finish('¡Se acabó el tiempo! ⏰');
+        }
+      }, 1000);
+    }
+    function updateTimer(){
+      timerEl.textContent = fmtTime(state.remaining);
+    }
+
+    // Selección de pregunta sin repetir
+    function pickQuestion(){
+      const pool = preguntas.filter(q =>
+        q.eje === state.eje &&
+        (q.nivel === state.nivel || true) && // se permite mezclar a falta de muchas por nivel
+        !state.usedIds.has(q.id)
+      );
+      if(pool.length === 0) return null;
+      const idx = Math.floor(Math.random()*pool.length);
+      return pool[idx];
+    }
+
+    function shuffle(arr){
+      const a = arr.slice();
+      for(let i=a.length-1;i>0;i--){
+        const j = Math.floor(Math.random()*(i+1));
+        [a[i],a[j]] = [a[j],a[i]];
+      }
+      return a;
+    }
+
+    // Presentación de pregunta
+    function showQuestion(q){
+      state.currentQuestion = q;
+      state.attempt = 0;
+
+      const head = addBubble(
+        `Nivel: ${state.nivel}  ·  Eje: ${state.eje}  ·  Habilidad: ${q.habilidad}`,
+        'bot'
+      );
+      addMeta(head, 'Nueva pregunta');
+
+      const opts = shuffle(q.alternativas).map(option => ({
+        label: option,
+        variant: 'ghost',
+        onClick: ()=> handleAnswer(option)
+      }));
+      const b = addBubble(q.enunciado, 'bot', opts);
+      addMeta(b, 'Elige una alternativa');
+    }
+
+    function handleAnswer(choice){
+      if(!state.currentQuestion) return;
+      addBubble(choice, 'user');
+      state.attempt += 1;
+
+      const q = state.currentQuestion;
+      if(choice === q.correcta){
+        const gained = state.attempt === 1 ? 3 : state.attempt === 2 ? 2 : 1;
+        state.points += gained;
+        state.asked += 1;
+        state.correct += 1;
+        state.usedIds.add(q.id);
+        state.habilidadesCount[q.habilidad] = (state.habilidadesCount[q.habilidad]||0)+1;
+
+        addBubble('¡Correcto! Bien razonado. ✅', 'bot');
+        addScore(`+${gained} puntos (intento ${state.attempt})`);
+        nextStep();
+      } else {
+        if(state.attempt < 3){
+          addBubble('No es correcto aún, intenta nuevamente. 💡', 'bot');
+        } else {
+          state.asked += 1;
+          state.incorrect += 1;
+          state.usedIds.add(q.id);
+          addBubble(`Tercer intento: respuesta correcta era "${q.correcta}".`, 'bot');
+          nextStep();
+        }
+      }
+    }
+
+    function nextStep(){
+      // Ofrecer siguiente pregunta o finalizar si sin tiempo
+      const options = [];
+      if(state.remaining > 0){
+        options.push({label:'Siguiente pregunta ▶', variant:'primary', onClick:()=> nextQuestion()});
+      }
+      options.push({label:'Terminar ahora ⏹', variant:'warn', onClick:()=> finish('Sesión finalizada por el usuario.')} );
+      addBubble('¿Deseas continuar practicando?', 'bot', options);
+    }
+
+    function nextQuestion(){
+      const q = pickQuestion();
+      if(!q){
+        finish('No hay más preguntas disponibles para este eje y nivel en esta sesión.');
+        return;
+      }
+      showQuestion(q);
+    }
+
+    function startQuiz(){
+      if(state.started) return;
+      state.started = true;
+      addBubble(`¡Comencemos! El temporizador empieza ahora. ⏱`, 'bot');
+      startTimer();
+      nextQuestion();
+    }
+
+    function resumenTexto(){
+      const habilidades = Object.entries(state.habilidadesCount)
+        .map(([h,c])=> `• ${h}: ${c}`)
+        .join('\n');
+      return [
+        `Nombre: ${state.nombre}`,
+        `Nivel: ${state.nivel}`,
+        `Eje: ${state.eje}`,
+        `Preguntas respondidas: ${state.asked}`,
+        `Correctas: ${state.correct}`,
+        `Incorrectas: ${state.incorrect}`,
+        `Puntaje total: ${state.points}`,
+        `Habilidades trabajadas:\n${habilidades || '• (sin registro)'}`
+      ].join('\n');
+    }
+
+    function finish(motivo){
+      if(state.intervalId) clearInterval(state.intervalId);
+      addBubble(motivo, 'bot');
+      const resumen = resumenTexto();
+      const b = addBubble(`Resumen de resultados:\n${resumen}`, 'bot');
+      addMeta(b, 'Estadística de la sesión');
+      saveSession();
+      // Bloquear entrada para cerrar sesión
+      input.disabled = true;
+      sendBtn.disabled = true;
+    }
+
+    // Enviar texto libre (se usa principalmente para nombre)
+    sendBtn.addEventListener('click', ()=> sendBtn.onclick && sendBtn.onclick());
+    input.addEventListener('keydown', (e)=>{
+      if(e.key === 'Enter') sendBtn.click();
+    });
+
+    // Inicio
+    greet();
+  </script>
+</body>
+</html>
